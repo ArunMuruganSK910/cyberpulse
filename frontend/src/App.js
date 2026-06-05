@@ -35,10 +35,8 @@ const COUNTRIES = [
   { name: 'Ukraine', lat: 48.3, lon: 31.1 },
 ]
 
-// Reduced from 40 → 20. Counter now rolls over at 20 and keeps ticking
 const MAX_THREATS = 20
 const MAX_ARCS = 8
-// Only latest 5 threats fed to Earth for heatmap — prevents GPU churn
 const EARTH_THREAT_WINDOW = 5
 
 function haversineDistance(lat1, lon1, lat2, lon2) {
@@ -128,6 +126,8 @@ function App() {
   const [threats, setThreats] = useState([])
   const [arcs, setArcs] = useState([])
   const [filter, setFilter] = useState('ALL')
+  const [backendReady, setBackendReady] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
   const threatPoolRef = useRef([])
   const poolIndexRef = useRef(0)
   const [hoverInfo, setHoverInfo] = useState({ country: null, x: 0, y: 0 })
@@ -135,7 +135,6 @@ function App() {
 
   const handleNewThreat = useCallback((threat) => {
     const unique = { ...threat, _uid: `${threat.id}_${++dripCounter}` }
-    // Rolls over cleanly — oldest drops off, counter keeps incrementing
     setThreats(prev => [unique, ...prev].slice(0, MAX_THREATS))
     threatTimestampsRef.current = [Date.now(), ...threatTimestampsRef.current].slice(0, 200)
 
@@ -154,6 +153,13 @@ function App() {
     setHoverInfo({ country: name, x, y })
   }, [])
 
+  // Elapsed timer shown on loading screen
+  useEffect(() => {
+    if (backendReady) return
+    const timer = setInterval(() => setElapsed(e => e + 1), 1000)
+    return () => clearInterval(timer)
+  }, [backendReady])
+
   useEffect(() => {
     const fetchPool = async () => {
       try {
@@ -162,6 +168,7 @@ function App() {
         if (Array.isArray(data) && data.length) {
           threatPoolRef.current = data
           poolIndexRef.current = 0
+          setBackendReady(true)
         }
       } catch (e) { console.error('Fetch failed:', e) }
     }
@@ -204,6 +211,126 @@ function App() {
     ALL: '#FFF', DDoS: '#FF2D78', Malware: '#FF8C00',
     Phishing: '#00FFFF', Ransomware: '#CCFF00', 'Brute Force': '#BF5FFF',
   }
+
+  // Loading screen
+  if (!backendReady) return (
+    <div style={{
+      width: '100vw', height: '100vh', background: '#020817',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      fontFamily: '"Share Tech Mono", monospace',
+    }}>
+      <style>{`
+        @keyframes scanline {
+          0% { transform: translateY(-100%); }
+          100% { transform: translateY(100vh); }
+        }
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
+        }
+        @keyframes fillbar {
+          0% { width: 5%; }
+          50% { width: 85%; }
+          100% { width: 5%; }
+        }
+        @keyframes flicker {
+          0%, 95%, 100% { opacity: 1; }
+          96% { opacity: 0.4; }
+          97% { opacity: 1; }
+          98% { opacity: 0.6; }
+        }
+      `}</style>
+
+      {/* Scanline effect */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0,
+        height: '4px',
+        background: 'linear-gradient(transparent, #00FFFF22, transparent)',
+        animation: 'scanline 3s linear infinite',
+        pointerEvents: 'none', zIndex: 1,
+      }} />
+
+      {/* Logo */}
+      <div style={{
+        color: '#00FFFF', fontSize: 10, letterSpacing: '6px',
+        marginBottom: 8, animation: 'flicker 4s infinite',
+      }}>
+        GLOBAL THREAT INTELLIGENCE
+      </div>
+      <div style={{
+        color: '#FFF', fontSize: 48, fontWeight: 700,
+        letterSpacing: '6px', marginBottom: 4,
+        textShadow: '0 0 20px #00FFFF44',
+        animation: 'flicker 6s infinite',
+      }}>
+        CYBERPULSE
+      </div>
+
+      {/* Divider */}
+      <div style={{
+        width: 320, height: 2,
+        background: 'linear-gradient(to right, transparent, #FF2D78, transparent)',
+        margin: '16px 0',
+      }} />
+
+      {/* Status */}
+      <div style={{
+        color: '#FF2D78', fontSize: 11, letterSpacing: '4px', marginBottom: 24,
+        animation: 'blink 1.2s step-end infinite',
+      }}>
+        ▶ INITIALIZING THREAT FEED...
+      </div>
+
+      {/* Progress bar */}
+      <div style={{
+        width: 320, height: 6, background: '#0a0a1a',
+        border: '1px solid #00FFFF44',
+        marginBottom: 12, overflow: 'hidden',
+      }}>
+        <div style={{
+          height: '100%', background: '#00FFFF',
+          boxShadow: '0 0 8px #00FFFF',
+          animation: 'fillbar 2s ease-in-out infinite',
+        }} />
+      </div>
+
+      {/* Timer */}
+      <div style={{ color: '#444', fontSize: 10, letterSpacing: '2px', marginBottom: 8 }}>
+        {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')} ELAPSED
+      </div>
+
+      <div style={{ color: '#555', fontSize: 10, letterSpacing: '2px' }}>
+        BACKEND WAKING UP — MAY TAKE UP TO 50s
+      </div>
+
+      {/* Corner decorations */}
+      <div style={{
+        position: 'fixed', top: 16, left: 16,
+        width: 40, height: 40,
+        borderTop: '2px solid #00FFFF44',
+        borderLeft: '2px solid #00FFFF44',
+      }} />
+      <div style={{
+        position: 'fixed', top: 16, right: 16,
+        width: 40, height: 40,
+        borderTop: '2px solid #00FFFF44',
+        borderRight: '2px solid #00FFFF44',
+      }} />
+      <div style={{
+        position: 'fixed', bottom: 16, left: 16,
+        width: 40, height: 40,
+        borderBottom: '2px solid #00FFFF44',
+        borderLeft: '2px solid #00FFFF44',
+      }} />
+      <div style={{
+        position: 'fixed', bottom: 16, right: 16,
+        width: 40, height: 40,
+        borderBottom: '2px solid #00FFFF44',
+        borderRight: '2px solid #00FFFF44',
+      }} />
+    </div>
+  )
 
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#020817' }}>
@@ -273,7 +400,6 @@ function App() {
         <directionalLight position={[5, 3, 5]} intensity={2.5} color="#ffffff" />
         <pointLight position={[-5, 3, -5]} intensity={1.0} color="#4488ff" />
         <Stars radius={300} depth={60} count={3000} factor={4} fade />
-        {/* Only pass latest 5 threats to Earth — heatmap stays lightweight */}
         <Earth threats={threats.slice(0, EARTH_THREAT_WINDOW)} />
         <AttackArcs arcs={filteredArcs} />
         <ClickableEarth
